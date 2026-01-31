@@ -26,7 +26,7 @@ step-3
 
 
 
-for env file
+for env file need this import
 
 go get github.com/joho/godotenv
 
@@ -45,3 +45,31 @@ CREATE TABLE users (
     image_path VARCHAR(255),
     pdf_path VARCHAR(255)
 );
+
+
+For API
+
+http://localhost:8080/api/users
+
+with body-> form-data
+| Key   | Type     | Value                                   |
+| ----- | -------- | --------------------------------------- |
+| name  | Text     | Vignesh                                 |
+| email | Text     | [test@gmail.com](mailto:test@gmail.com) |
+| phone | Text     | 9876543210                              |
+| city  | Text     | Chennai                                 |
+| image | File     | select image.jpg                        |
+| pdf   | File     | select resume.pdf                       |
+
+
+Upload API limits
+
+Max request size: 200 MB
+
+Format: multipart/form-data
+
+Fields: name, email, phone, city
+
+Files: image (jpg/png), pdf
+
+Error: 400 if payload exceeds limit
