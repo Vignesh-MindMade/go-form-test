@@ -16,14 +16,13 @@ import (
 
 var db *sql.DB
 var tmpl *template.Template
+const maxUploadSize = 200 << 20 // 200 MB
 
 func main() {
 
 	// Load .env file
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+_ = godotenv.Load() // ignore error in Cloud Run
+os.MkdirAll("uploads", 0755)
 
 	// Read DB values from environment
 	dbUser := os.Getenv("DB_USER")
@@ -50,9 +49,18 @@ func main() {
 
 	http.HandleFunc("/", showForm)
 	http.HandleFunc("/submit", submitForm)
+	http.HandleFunc("/api/users", createUserAPI)
 
-	fmt.Println("Server running on http://localhost:8080")
-	http.ListenAndServe(":8080", nil)
+
+	
+	port := os.Getenv("PORT")
+if port == "" {
+	port = "8080"
+}
+
+log.Println("Listening on port", port)
+log.Fatal(http.ListenAndServe(":"+port, nil))
+
 }
 
 func showForm(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +70,7 @@ func showForm(w http.ResponseWriter, r *http.Request) {
 func submitForm(w http.ResponseWriter, r *http.Request) {
 
 	// Max upload size = 10 MB
-	r.ParseMultipartForm(10 << 20)
+	r.ParseMultipartForm(50 << 20)
 
 	// Text fields
 	name := r.FormValue("name")
@@ -113,4 +121,69 @@ func saveFile(src io.Reader, path string) {
 	defer dst.Close()
 
 	io.Copy(dst, src)
+}
+
+func createUserAPI(w http.ResponseWriter, r *http.Request) {
+
+	// Allow only POST
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	log.Println("Content-Length:", r.ContentLength)
+	// 🔒 HARD request limit (this is the real gatekeeper)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+
+	// Parse multipart form (memory buffer only)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		log.Println("Multipart error:", err)
+		http.Error(w, "File too large or invalid multipart data", http.StatusBadRequest)
+		return
+	}
+	// Text fields
+	name := r.FormValue("name")
+	email := r.FormValue("email")
+	phone := r.FormValue("phone")
+	city := r.FormValue("city")
+
+	// Image
+	imageFile, imageHeader, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "Image required", http.StatusBadRequest)
+		return
+	}
+	defer imageFile.Close()
+
+	imagePath := filepath.Join("uploads", imageHeader.Filename)
+	saveFile(imageFile, imagePath)
+
+	// PDF
+	pdfFile, pdfHeader, err := r.FormFile("pdf")
+	if err != nil {
+		http.Error(w, "PDF required", http.StatusBadRequest)
+		return
+	}
+	defer pdfFile.Close()
+
+	pdfPath := filepath.Join("uploads", pdfHeader.Filename)
+	saveFile(pdfFile, pdfPath)
+
+	// Insert DB
+	query := `
+		INSERT INTO users
+		(name, email, phone, city, image_path, pdf_path)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = db.Exec(query, name, email, phone, city, imagePath, pdfPath)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	// API response (JSON)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintln(w, `{"status":"success","message":"User created"}`)
+	
 }
