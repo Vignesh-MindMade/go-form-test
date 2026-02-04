@@ -26,11 +26,11 @@ func main() {
 	os.MkdirAll("uploads", 0755)
 
 	// Read DB values from environment
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASS")
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbName := os.Getenv("DB_NAME")
+	dbUser := os.Getenv("_DB_USER")
+	dbPass := os.Getenv("_DB_PASS")
+	dbHost := os.Getenv("_DB_HOST")
+	dbPort := os.Getenv("_DB_PORT")
+	dbName := os.Getenv("_DB_NAME")
 
 	dsn := fmt.Sprintf(
 		"%s:%s@tcp(%s:%s)/%s",
