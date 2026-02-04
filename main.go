@@ -19,19 +19,18 @@ var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
 func initDB() {
-	dbUser := os.Getenv("_DB_USER")
-	dbPass := os.Getenv("_DB_PASS")
-	dbHost := os.Getenv("_DB_HOST")
-	dbPort := os.Getenv("_DB_PORT")
-	dbName := os.Getenv("_DB_NAME")
-	if dbUser == "" || dbHost == "" || dbName == "" {
-		log.Println("DB env vars missing — running WITHOUT database")
+		dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASS")
+	dbName := os.Getenv("DB_NAME")
+	dbSocket := os.Getenv("DB_SOCKET")
+	if dbUser == "" || dbName == "" || dbSocket == "" {
+		log.Println("DB config missing — running WITHOUT database")
 		return
 	}
 
-	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		dbUser, dbPass, dbHost, dbPort, dbName,
+		dsn := fmt.Sprintf(
+		"%s:%s@unix(%s)/%s?parseTime=true",
+		dbUser, dbPass, dbSocket, dbName,
 	)
 
 	var err error
