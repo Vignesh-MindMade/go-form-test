@@ -18,15 +18,16 @@ var db *sql.DB
 var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
+
 func initDB() {
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASS")
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbName := os.Getenv("DB_NAME")
+	dbUser := os.Getenv("_DB_USER")
+	dbPass := os.Getenv("_DB_PASS")
+	dbHost := os.Getenv("_DB_HOST")
+	dbPort := os.Getenv("_DB_PORT")
+	dbName := os.Getenv("_DB_NAME")
 
 	if dbUser == "" || dbHost == "" || dbName == "" {
-		log.Println("DB env vars missing — running WITHOUT database")
+		log.Println("WARNING: DB environment variables missing → running WITHOUT database")
 		return
 	}
 
@@ -38,30 +39,39 @@ func initDB() {
 	var err error
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		log.Println("DB open failed:", err)
+		log.Printf("ERROR: cannot open database connection: %v", err)
 		db = nil
 		return
 	}
 
-	if err := db.Ping(); err != nil {
-		log.Println("DB ping failed:", err)
+	if err = db.Ping(); err != nil {
+		log.Printf("ERROR: database ping failed: %v → disabling DB", err)
 		db = nil
 		return
 	}
 
-	log.Println("Database connected")
+	log.Println("INFO: Database connected successfully")
 }
-func main() {
 
-	// Load .env file
-	_ = godotenv.Load() // ignore error in Cloud Run
-	os.MkdirAll("uploads", 0755)
+func main() {
+	// Load .env file (ignore error in Cloud Run / container environments)
+	_ = godotenv.Load()
+
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		log.Printf("WARNING: cannot create uploads directory: %v", err)
+		// continue anyway — uploads will fail later if needed
+	}
 
 	initDB()
 
-	// Parse templates
-	tmpl = template.Must(template.ParseFiles("templates/form.html"))
+	var err error
+	tmpl, err = template.ParseFiles("templates/form.html")
+	if err != nil {
+		log.Fatalf("CRITICAL: cannot parse template: %v", err) // this one is usually fatal
+		// If you want even this non-fatal → comment out log.Fatal and return / os.Exit(1)
+	}
 
+	// Register handlers
 	http.HandleFunc("/", showForm)
 	http.HandleFunc("/submit", submitForm)
 	http.HandleFunc("/api/users", createUserAPI)
@@ -71,132 +81,152 @@ func main() {
 		port = "8080"
 	}
 
-	log.Println("Listening on port", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Printf("Starting HTTP server on :%s ...", port)
 
+	// Most important change: do NOT use log.Fatal here
+	err = http.ListenAndServe(":"+port, nil)
+	if err != nil {
+		log.Printf("ERROR: HTTP server failed: %v", err)
+		// You can decide what to do:
+		// Option A: just log and let program continue (if you have other goroutines)
+		// Option B: graceful shutdown or os.Exit(1) — but only if this is the main purpose
+		//
+		// Recommended for most cloud/container cases:
+		log.Println("Server stopped. Exiting.")
+		os.Exit(1) // ← explicit exit is clearer than log.Fatal
+	}
 }
 
 func showForm(w http.ResponseWriter, r *http.Request) {
+	if tmpl == nil {
+		http.Error(w, "Template not loaded", http.StatusInternalServerError)
+		return
+	}
 	tmpl.Execute(w, nil)
 }
 
 func submitForm(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		log.Printf("ParseMultipartForm failed: %v", err)
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
 
-	// Max upload size = 10 MB
-	r.ParseMultipartForm(50 << 20)
-
-	// Text fields
 	name := r.FormValue("name")
 	email := r.FormValue("email")
 	phone := r.FormValue("phone")
 	city := r.FormValue("city")
 
-	// File: Image
+	// Image (optional in this handler?)
 	imageFile, imageHeader, _ := r.FormFile("image")
-	defer imageFile.Close()
+	var imagePath string
+	if imageFile != nil {
+		defer imageFile.Close()
+		imagePath = filepath.Join("uploads", imageHeader.Filename)
+		if err := saveFile(imageFile, imagePath); err != nil {
+			log.Printf("Failed to save image: %v", err)
+		}
+	}
 
-	imagePath := filepath.Join("uploads", imageHeader.Filename)
-	saveFile(imageFile, imagePath)
-
-	// File: PDF
+	// PDF (optional?)
 	pdfFile, pdfHeader, _ := r.FormFile("pdf")
-	defer pdfFile.Close()
+	var pdfPath string
+	if pdfFile != nil {
+		defer pdfFile.Close()
+		pdfPath = filepath.Join("uploads", pdfHeader.Filename)
+		if err := saveFile(pdfFile, pdfPath); err != nil {
+			log.Printf("Failed to save pdf: %v", err)
+		}
+	}
 
-	pdfPath := filepath.Join("uploads", pdfHeader.Filename)
-	saveFile(pdfFile, pdfPath)
+	if db == nil {
+		fmt.Fprintln(w, "Data & files saved (but DB is not connected)")
+		return
+	}
 
-	// Insert into DB
-	query := `
-		INSERT INTO users
-		(name, email, phone, city, image_path, pdf_path)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
-
-	_, err := db.Exec(
-		query,
-		name, email, phone, city,
-		imagePath, pdfPath,
-	)
-
+	query := `INSERT INTO users (name, email, phone, city, image_path, pdf_path) VALUES (?,?,?,?,?,?)`
+	_, err := db.Exec(query, name, email, phone, city, imagePath, pdfPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("DB insert failed: %v", err)
+		http.Error(w, "Internal server error (database)", http.StatusInternalServerError)
+		return
 	}
 
 	fmt.Fprintln(w, "Data & files saved successfully")
 }
 
-// Helper function to save files
-func saveFile(src io.Reader, path string) {
+func saveFile(src io.Reader, path string) error {
 	dst, err := os.Create(path)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer dst.Close()
 
-	io.Copy(dst, src)
+	_, err = io.Copy(dst, src)
+	return err
 }
 
 func createUserAPI(w http.ResponseWriter, r *http.Request) {
-
-	// Allow only POST
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Println("Content-Length:", r.ContentLength)
-	// 🔒 HARD request limit (this is the real gatekeeper)
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 
-	// Parse multipart form (memory buffer only)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		log.Println("Multipart error:", err)
-		http.Error(w, "File too large or invalid multipart data", http.StatusBadRequest)
+		log.Printf("Parse multipart error: %v", err)
+		http.Error(w, "File too large or invalid form data", http.StatusBadRequest)
 		return
 	}
-	// Text fields
+
 	name := r.FormValue("name")
 	email := r.FormValue("email")
 	phone := r.FormValue("phone")
 	city := r.FormValue("city")
 
-	// Image
 	imageFile, imageHeader, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "Image required", http.StatusBadRequest)
+		http.Error(w, "Image file is required", http.StatusBadRequest)
 		return
 	}
 	defer imageFile.Close()
 
 	imagePath := filepath.Join("uploads", imageHeader.Filename)
-	saveFile(imageFile, imagePath)
+	if err := saveFile(imageFile, imagePath); err != nil {
+		log.Printf("Failed to save image: %v", err)
+		http.Error(w, "Failed to save image", http.StatusInternalServerError)
+		return
+	}
 
-	// PDF
 	pdfFile, pdfHeader, err := r.FormFile("pdf")
 	if err != nil {
-		http.Error(w, "PDF required", http.StatusBadRequest)
+		http.Error(w, "PDF file is required", http.StatusBadRequest)
 		return
 	}
 	defer pdfFile.Close()
 
 	pdfPath := filepath.Join("uploads", pdfHeader.Filename)
-	saveFile(pdfFile, pdfPath)
+	if err := saveFile(pdfFile, pdfPath); err != nil {
+		log.Printf("Failed to save pdf: %v", err)
+		http.Error(w, "Failed to save PDF", http.StatusInternalServerError)
+		return
+	}
 
-	// Insert DB
-	query := `
-		INSERT INTO users
-		(name, email, phone, city, image_path, pdf_path)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
 
+	query := `INSERT INTO users (name, email, phone, city, image_path, pdf_path) VALUES (?,?,?,?,?,?)`
 	_, err = db.Exec(query, name, email, phone, city, imagePath, pdfPath)
 	if err != nil {
+		log.Printf("Database insert failed: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 
-	// API response (JSON)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	fmt.Fprintln(w, `{"status":"success","message":"User created"}`)
-
 }
