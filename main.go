@@ -10,19 +10,20 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
 )
 
 var db *sql.DB
 var tmpl *template.Template
+
 const maxUploadSize = 200 << 20 // 200 MB
 
 func main() {
 
 	// Load .env file
-_ = godotenv.Load() // ignore error in Cloud Run
-os.MkdirAll("uploads", 0755)
+	_ = godotenv.Load() // ignore error in Cloud Run
+	os.MkdirAll("uploads", 0755)
 
 	// Read DB values from environment
 	dbUser := os.Getenv("DB_USER")
@@ -36,6 +37,7 @@ os.MkdirAll("uploads", 0755)
 		dbUser, dbPass, dbHost, dbPort, dbName,
 	)
 
+	var err error
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
@@ -51,15 +53,13 @@ os.MkdirAll("uploads", 0755)
 	http.HandleFunc("/submit", submitForm)
 	http.HandleFunc("/api/users", createUserAPI)
 
-
-	
 	port := os.Getenv("PORT")
-if port == "" {
-	port = "8080"
-}
+	if port == "" {
+		port = "8080"
+	}
 
-log.Println("Listening on port", port)
-log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Println("Listening on port", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 
 }
 
@@ -185,5 +185,5 @@ func createUserAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	fmt.Fprintln(w, `{"status":"success","message":"User created"}`)
-	
+
 }

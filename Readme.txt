@@ -4,7 +4,7 @@ mkdir goform
 cd goform
 
 To run the progrom
-    > go main.go
+    > go run main.go
     > go build -> to create executable
 
 Open in editor
