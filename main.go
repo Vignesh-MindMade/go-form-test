@@ -18,35 +18,48 @@ var db *sql.DB
 var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
+func initDB() {
+	dbUser := os.Getenv("DB_USER")
+	dbPass := os.Getenv("DB_PASS")
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbName := os.Getenv("DB_NAME")
 
-func main() {
-
-	// Load .env file
-	_ = godotenv.Load() // ignore error in Cloud Run
-	os.MkdirAll("uploads", 0755)
-
-	// Read DB values from environment
-	dbUser := os.Getenv("_DB_USER")
-	dbPass := os.Getenv("_DB_PASS")
-	dbHost := os.Getenv("_DB_HOST")
-	dbPort := os.Getenv("_DB_PORT")
-	dbName := os.Getenv("_DB_NAME")
+	if dbUser == "" || dbHost == "" || dbName == "" {
+		log.Println("DB env vars missing — running WITHOUT database")
+		return
+	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s",
+		"%s:%s@tcp(%s:%s)/%s?parseTime=true",
 		dbUser, dbPass, dbHost, dbPort, dbName,
 	)
 
 	var err error
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("DB open failed:", err)
+		db = nil
+		return
 	}
 
 	if err := db.Ping(); err != nil {
-		log.Fatal(err)
+		log.Println("DB ping failed:", err)
+		db = nil
+		return
 	}
 
+	log.Println("Database connected")
+}
+func main() {
+
+	// Load .env file
+	_ = godotenv.Load() // ignore error in Cloud Run
+	os.MkdirAll("uploads", 0755)
+
+	initDB()
+
+	// Parse templates
 	tmpl = template.Must(template.ParseFiles("templates/form.html"))
 
 	http.HandleFunc("/", showForm)
