@@ -22,7 +22,8 @@ func initDB() {
 		dbUser := os.Getenv("DB_USER")
 	dbPass := os.Getenv("DB_PASS")
 	dbName := os.Getenv("DB_NAME")
-	dbSocket := os.Getenv("DB_SOCKET")
+	dbSocket := os.Getenv("CLOUD_SQL_CONNECTION_NAME")
+	
 	if dbUser == "" || dbName == "" || dbSocket == "" {
 		log.Println("DB config missing — running WITHOUT database")
 		return
