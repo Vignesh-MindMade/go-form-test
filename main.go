@@ -38,8 +38,6 @@ func initDB() {
 		dbPort,
 		dbName,
 	)
-}
-
 
 	var err error
 	db, err = sql.Open("mysql", dsn)
@@ -57,6 +55,7 @@ func initDB() {
 
 	log.Println("Database connected")
 }
+
 func main() {
 
 	// Load .env file
@@ -126,8 +125,8 @@ func submitForm(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println(err)
-http.Error(w, "Internal error", 500)
-return
+		http.Error(w, "Internal error", 500)
+		return
 	}
 
 	fmt.Fprintln(w, "Data & files saved successfully")
@@ -169,11 +168,11 @@ func createUserAPI(w http.ResponseWriter, r *http.Request) {
 
 	// Image
 	imageFile, imageHeader, err := r.FormFile("image")
-if err != nil {
-	http.Error(w, "Image required", http.StatusBadRequest)
-	return
-}
-defer imageFile.Close()
+	if err != nil {
+		http.Error(w, "Image required", http.StatusBadRequest)
+		return
+	}
+	defer imageFile.Close()
 
 	imagePath := filepath.Join("uploads", imageHeader.Filename)
 	saveFile(imageFile, imagePath)
