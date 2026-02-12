@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 )
 
@@ -31,16 +31,16 @@ func initDB() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		dbUser,
-		dbPass,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		dbHost,
 		dbPort,
+		dbUser,
+		dbPass,
 		dbName,
 	)
 
 	var err error
-	db, err = sql.Open("mysql", dsn)
+	db, err = sql.Open("postgres", dsn)
 	if err != nil {
 		log.Println("DB open failed:", err)
 		db = nil
@@ -114,7 +114,7 @@ func submitForm(w http.ResponseWriter, r *http.Request) {
 	query := `
 		INSERT INTO users
 		(name, email, phone, city, image_path, pdf_path)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err := db.Exec(
@@ -192,7 +192,7 @@ func createUserAPI(w http.ResponseWriter, r *http.Request) {
 	query := `
 		INSERT INTO users
 		(name, email, phone, city, image_path, pdf_path)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err = db.Exec(query, name, email, phone, city, imagePath, pdfPath)
