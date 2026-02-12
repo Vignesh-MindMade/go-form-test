@@ -19,20 +19,27 @@ var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
 func initDB() {
-		dbUser := os.Getenv("DB_USER")
+	dbUser := os.Getenv("DB_USER")
 	dbPass := os.Getenv("DB_PASS")
 	dbName := os.Getenv("DB_NAME")
-	dbSocket := os.Getenv("CLOUD_SQL_CONNECTION_NAME")
-	
-	if dbUser == "" || dbName == "" || dbSocket == "" {
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+
+	if dbUser == "" || dbName == "" || dbHost == "" || dbPort == "" {
 		log.Println("DB config missing — running WITHOUT database")
 		return
 	}
 
-		dsn := fmt.Sprintf(
-		"%s:%s@unix(%s)/%s?parseTime=true",
-		dbUser, dbPass, dbSocket, dbName,
+	dsn := fmt.Sprintf(
+		"%s:%s@tcp(%s:%s)/%s?parseTime=true",
+		dbUser,
+		dbPass,
+		dbHost,
+		dbPort,
+		dbName,
 	)
+}
+
 
 	var err error
 	db, err = sql.Open("mysql", dsn)
