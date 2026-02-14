@@ -19,39 +19,22 @@ var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
 func initDB() {
-	dbUser := os.Getenv("DB_USER")
-	dbPass := os.Getenv("DB_PASS")
-	dbName := os.Getenv("DB_NAME")
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-
-	if dbUser == "" || dbName == "" || dbHost == "" || dbPort == "" {
-		log.Println("DB config missing — running WITHOUT database")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Println("DATABASE_URL missing — running WITHOUT database")
 		return
 	}
 
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
-		dbHost,
-		dbPort,
-		dbUser,
-		dbPass,
-		dbName,
-	)
-
 	var err error
-	db, err = sql.Open("postgres", dsn)
+	db, err = sql.Open("pgx", dsn)
 	if err != nil {
 		log.Println("DB open failed:", err)
 		db = nil
 		return
 	}
 
-	if err := db.Ping(); err != nil {
-		log.Println("DB ping failed:", err)
-		db = nil
-		return
-	}
+log.Fatal("Database connection failed:", err)
+
 
 	log.Println("Database connected")
 }
