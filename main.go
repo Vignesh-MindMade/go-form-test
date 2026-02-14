@@ -32,13 +32,33 @@ func initDB() {
         log.Fatal("DB open failed:", err)
     }
 
-    err = db.Ping()
-    if err != nil {
+    // Verify connection
+    if err = db.Ping(); err != nil {
         log.Fatal("Database connection failed:", err)
     }
 
     log.Println("Database connected")
+
+    // Create table if not exists
+    _, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            email TEXT,
+            phone TEXT,
+            city TEXT,
+            image_path TEXT,
+            pdf_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `)
+    if err != nil {
+        log.Fatal("Table creation failed:", err)
+    }
+
+    log.Println("Users table ready")
 }
+
 
 func main() {
 
