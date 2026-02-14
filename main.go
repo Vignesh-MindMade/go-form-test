@@ -19,24 +19,25 @@ var tmpl *template.Template
 
 const maxUploadSize = 200 << 20 // 200 MB
 func initDB() {
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		log.Println("DATABASE_URL missing — running WITHOUT database")
-		return
-	}
 
-	var err error
-	db, err = sql.Open("pgx", dsn)
-	if err != nil {
-		log.Println("DB open failed:", err)
-		db = nil
-		return
-	}
+    dsn := os.Getenv("DATABASE_URL")
+    if dsn == "" {
+        log.Println("DATABASE_URL missing — running WITHOUT database")
+        return
+    }
 
-log.Fatal("Database connection failed:", err)
+    var err error
+    db, err = sql.Open("pgx", dsn)
+    if err != nil {
+        log.Fatal("DB open failed:", err)
+    }
 
+    err = db.Ping()
+    if err != nil {
+        log.Fatal("Database connection failed:", err)
+    }
 
-	log.Println("Database connected")
+    log.Println("Database connected")
 }
 
 func main() {
